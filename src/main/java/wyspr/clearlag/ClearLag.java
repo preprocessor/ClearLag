@@ -1,17 +1,20 @@
 package wyspr.clearlag;
 
 import net.fabricmc.api.ModInitializer;
+import net.minecraft.core.entity.Entity;
+import net.minecraft.core.entity.EntityItem;
+import net.minecraft.core.entity.EntityLiving;
+import net.minecraft.core.entity.vehicle.EntityBoat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import turniplabs.halplibe.util.GameStartEntrypoint;
 import turniplabs.halplibe.util.RecipeEntrypoint;
-
-import java.util.Objects;
-
+import wyspr.clearlag.utils.TPSTracker;
 
 public class ClearLag implements ModInitializer, GameStartEntrypoint, RecipeEntrypoint {
     public static final String MOD_ID = "ClearLag";
     public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
+	public static TPSTracker tpsTracker = new TPSTracker();
     @Override
     public void onInitialize() {
         log("ClearLag initialized.");
@@ -23,27 +26,38 @@ public class ClearLag implements ModInitializer, GameStartEntrypoint, RecipeEntr
 	}
 
 	@Override
-	public void beforeGameStart() {
-
-	}
-
+	public void beforeGameStart() {}
 	@Override
-	public void afterGameStart() {
-
-	}
-
+	public void afterGameStart() {}
 	@Override
-	public void onRecipesReady() {
-
-	}
+	public void onRecipesReady() {}
 
 	public enum LagSource {
 		ITEMS,
 		MOBS,
-//		REDSTONE,
+		BOAT,
 		ALL {
 			@Override
 			public String toString() { return "entities"; }
-		}
+		};
+
+		public Class<? extends Entity> getMCClass() {
+			Class<? extends Entity> MCClass = null;
+			switch (this) {
+                case ITEMS:
+                    MCClass = EntityItem.class;
+					break;
+                case MOBS:
+                    MCClass = EntityLiving.class;
+					break;
+				case BOAT:
+					MCClass = EntityBoat.class;
+					break;
+				case ALL:
+                    MCClass = Entity.class;
+					break;
+            }
+			return MCClass;
+        }
 	}
 }

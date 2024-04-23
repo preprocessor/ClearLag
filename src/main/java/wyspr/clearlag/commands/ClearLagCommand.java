@@ -1,7 +1,6 @@
 package wyspr.clearlag.commands;
 
 import net.minecraft.core.entity.Entity;
-import net.minecraft.core.entity.EntityItem;
 import net.minecraft.core.entity.EntityLiving;
 import net.minecraft.core.entity.animal.EntityPig;
 import net.minecraft.core.entity.animal.EntityWolf;
@@ -12,6 +11,8 @@ import net.minecraft.core.net.command.CommandHandler;
 import net.minecraft.core.net.command.CommandSender;
 import net.minecraft.core.util.phys.AABB;
 import net.minecraft.core.world.World;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.world.WorldServer;
 import wyspr.clearlag.ClearLag;
 import wyspr.clearlag.ClearLag.LagSource;
 
@@ -25,33 +26,22 @@ public class ClearLagCommand extends Command {
 
 	@Override
 	public boolean execute(CommandHandler handler, CommandSender sender, String[] args) {
-		if (sender.isConsole()) return false;
+		if (sender.isConsole() && args.length < 3)
+			throw new CommandError("You must target a player");
 
 		EntityPlayer p = sender.getPlayer();
-		LagSource target = LagSource.ALL;
+		LagSource lagSource = LagSource.ALL;
 		int range = 0;
 
 		switch (args.length) {
 			case 0:
 				break;
 			case 1:
-				try {
-					range = Integer.parseInt(args[0]);
-				} catch (NumberFormatException ignored) {
-					// Ignore because we have default value
-				}
+				range = getRange(args[0], range);
 				break;
 			case 2:
-				try {
-					target = LagSource.valueOf(args[0].toUpperCase());
-				} catch (IllegalArgumentException ignored) {
-					// Ignore because we have default value
-				}
-				try {
-					range = Integer.parseInt(args[1]);
-				} catch (NumberFormatException ignored) {
-					// Ignore because we have default value
-				}
+				lagSource = getLagSource(args[0], lagSource);
+				range = getRange(args[1], range);
 				break;
 			default:
 				EntityPlayer targetPlayer = handler.getPlayer(args[0]);
@@ -59,21 +49,36 @@ public class ClearLagCommand extends Command {
 					throw new CommandError("Player not found!");
 				}
 				p = targetPlayer;
-				try {
-					target = LagSource.valueOf(args[1].toUpperCase());
-				} catch (IllegalArgumentException ignored) {
-					// Ignore because we have default value
-				}
-				try {
-					range = Integer.parseInt(args[2]);
-				} catch (NumberFormatException ignored) {
-					// Ignore because we have default value
-				}
+				lagSource = getLagSource(args[1], lagSource);
+				range = getRange(args[2], range);
 		}
 
+
+		AABB targetArea = getTargetArea(p, range);
+		Class<? extends Entity> targetClass = lagSource.getMCClass();
+//		MinecraftServer mc = MinecraftServer.getInstance();
+//		WorldServer world = mc.getDimensionWorld(p.dimension);
+		World world = p.world;
+
+		List<Entity> entities = world.getEntitiesWithinAABB(targetClass, targetArea).stream()
+			.filter(e -> !( e instanceof EntityPlayer))
+			.filter(e -> !( e instanceof EntityLiving && !((EntityLiving) e).nickname.isEmpty() ))
+			.filter(e -> !( e instanceof EntityWolf && ((EntityWolf) e).isWolfTamed() ))
+			.filter(e -> !( e instanceof EntityPig && ((EntityPig) e).getSaddled() ))
+			.collect(Collectors.toList());
+
+        for (Entity e: entities) world.removePlayer(e);
+
+		String targetString = lagSource.toString().toLowerCase();
+		sender.sendMessage("§eRemoved §4" + entities.size() + " " + targetString + "§e in a §4" + range + "§e chunk radius.");
+
+		return true;
+	}
+
+	private static AABB getTargetArea(EntityPlayer p, int range) {
 		int centerChunkX = p.chunkCoordX;
 		int centerChunkZ = p.chunkCoordZ;
-		AABB area = new AABB(
+		return new AABB(
 			16.0 * (centerChunkX - range),
 			0.0,
 			16.0 * (centerChunkZ - range),
@@ -81,48 +86,24 @@ public class ClearLagCommand extends Command {
 			255.0,
 			16.0 * (1 + centerChunkZ + range)
 		);
-		World world = handler.getWorld(p);
+	}
 
-		List<Entity> entities = null;
-
-		switch (target) {
-			case ITEMS:
-				entities = world.getEntitiesWithinAABB(EntityItem.class, area);
-				break;
-			case MOBS:
-				entities = world.getEntitiesWithinAABB(EntityLiving.class, area);
-				break;
-			case ALL:
-				entities = world.getEntitiesWithinAABB(EntityItem.class, area);
-				entities.addAll(world.getEntitiesWithinAABB(EntityLiving.class, area));
-				break;
+	private static LagSource getLagSource(String s, LagSource lagSource) {
+		try {
+			lagSource = LagSource.valueOf(s.toUpperCase());
+		} catch (IllegalArgumentException ignored) {
+			// Ignore because we have default value
 		}
+		return lagSource;
+	}
 
-		entities = entities.stream()
-			.filter(e -> !( e instanceof EntityPlayer))
-			.filter(e -> !( e instanceof EntityLiving && !((EntityLiving) e).nickname.isEmpty() ))
-			.filter(e -> !( e instanceof EntityWolf && ((EntityWolf) e).isWolfTamed() ))
-			.filter(e -> !( e instanceof EntityPig && ((EntityPig) e).getSaddled() ))
-			.collect(Collectors.toList());
-
-		boolean debugMode = false;
-		int entityAmount = entities.size();
-		for (Entity e : entities) {
-			if (debugMode) {
-				String entityName = e.getClass()
-					.getSimpleName()
-					.replace("Entity", "");
-
-				String info = String.format("Removed %-8s at: %.1f, %.1f, %.1f", entityName, e.x, e.y, e.z);
-				ClearLag.log(info);
-			}
-			e.remove();
+	private static int getRange(String s, int range) {
+		try {
+			range = Integer.parseInt(s);
+		} catch (NumberFormatException ignored) {
+			// Ignore because we have default value
 		}
-
-		String targetString = target.toString().toLowerCase();
-		sender.sendMessage("§eRemoved §4" + entityAmount + " " + targetString + "§e in a §4" + range + "§e chunk radius.");
-
-		return true;
+		return range;
 	}
 
 	@Override
